@@ -67,7 +67,7 @@ class LayoutEstimationImprover(pl.LightningModule):
             # Combined D loss
             d_loss = (loss_d_fake + loss_d_real) * 0.5
             
-            self.log('d_loss', d_loss)
+            self.log('d_loss', d_loss, prog_bar=True, on_epoch=True)
             return {'loss': d_loss}
 
         elif optimizer_idx == 1:
@@ -85,16 +85,16 @@ class LayoutEstimationImprover(pl.LightningModule):
             
             g_loss = loss_g_gan + loss_g_l1
             mse = self.criterionMSE(fake.detach(), mask.detach())
-            self.log('g_loss', g_loss)
-            self.log('train_mse', mse, prog_bar=True, on_epoch=True)
+            self.log('g_loss', g_loss, prog_bar=True, on_epoch=True)
             return {'loss': g_loss, "train_mse": mse}
 
         elif optimizer_idx == 2:
             y_bon_, y_cor_ = self.layout_estimator(rgb, fake)
             bon_loss = F.l1_loss(y_bon_, y_bon)
             cor_loss = F.binary_cross_entropy_with_logits(y_cor_, y_cor)
-            self.log('bon_loss', bon_loss, prog_bar=True, on_epoch=True)
-            self.log('cor_loss', cor_loss, prog_bar=True, on_epoch=True)
+            self.log('train_bon_loss', bon_loss)
+            self.log('train_cor_loss', cor_loss)
+            self.log("train_loss", bon_loss + cor_loss, prog_bar=True, on_epoch=True)
             return {'loss': bon_loss + cor_loss}
 
     def validation_step(self, batch, batch_idx):
