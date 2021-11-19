@@ -75,9 +75,9 @@ if __name__ == '__main__':
     checkpoint_callback = pl.callbacks.ModelCheckpoint(
         verbose=True,
         save_top_k=1,
-        filename='{epoch}-{val_cor_err}',
-        monitor='val_cor_err',
-        mode='min'
+        filename='{epoch}-{valid_3DIoU}',
+        monitor='valid_3DIoU',
+        mode='max'
     )
 
     callbacks = [pl.callbacks.lr_monitor.LearningRateMonitor()]
