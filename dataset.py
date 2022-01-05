@@ -32,6 +32,50 @@ def draw_circle(img_, pt, r=5):
     img_[pt[1]-r:pt[1]+r, pt[0]-r:pt[0]+r] = arr
     return img_[r:-r, r:-r]
 
+class CornerDataset(data.Dataset):
+    def __init__(self, path, split, scale=1.0) -> None:
+        super().__init__()
+        self.split = split
+        self.scale = scale
+        self.images = [i for i in Path(path).glob("**/*") if i.parents[0].name == "img" and i.parents[1].name == split]
+        print("Found {} images for split {}.".format(self.__len__(), split))
+
+    def __len__(self) -> int:
+        return len(self.images)
+
+    def load_image(self, idx):
+        img = self.images[idx]
+        img = Image.open(img).convert('RGB')
+        resize = (np.array(img.size) * self.scale).astype(int)
+        img = img.resize(resize)
+        return np.asarray(img, dtype=np.float32)
+
+    def load_corners(self, idx):
+        path = self.images[idx].as_posix().replace("img", "label_cor").replace(".png", ".txt").replace(".jpg", ".txt")
+        cor = np.loadtxt(path)
+        cor = (cor * self.scale).astype(int)
+        return cor
+
+    def __getitem__(self, index: int):
+        img = self.load_image(index)
+        cor = self.load_corners(index)
+        
+        mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.float32)
+
+        for pt in cor:
+            mask = draw_circle(mask, pt)
+        
+        if self.split == "train" and np.random.uniform() >= 0.5:
+            dx = np.random.randint(img.shape[1])
+            img  = np.roll(img, dx, axis=1)
+            mask = np.roll(mask, dx, axis=1)
+
+        img  = torch.from_numpy(img) / 255
+        mask = torch.from_numpy(mask)
+
+        return img.permute(2,0,1), mask.unsqueeze(0)
+
+
 class MyAugmentationDataset(data.Dataset):
     def __init__(self, path) -> None:
         super().__init__()
@@ -305,13 +349,14 @@ def visualize_a_data(x, y_bon, y_cor):
 if __name__ == '__main__':
     import torch
     parser = argparse.ArgumentParser()
-    parser.add_argument('--path', help="Path to dataset")
+    parser.add_argument('--path', required=True, help="Path to dataset")
     args = parser.parse_args()
-    dataset = PanoCorBonDataset(args.path, return_mask=True, stretch=True)
+    dataset = CornerDataset(args.path, "train", 1)
+        
+    for x,y in dataset:
 
-    for d in dataset:
-        x, _,_, mask = d
+        cv2.imshow("mask", y.numpy())
         cv2.imshow("img", x.permute(1,2,0).numpy())
-        cv2.imshow("mask", mask.permute(1,2,0).numpy())
         cv2.waitKey(0)
+        break
         

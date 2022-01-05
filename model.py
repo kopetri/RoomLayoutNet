@@ -4,6 +4,7 @@ import torch
 import torch.nn as nn
 import torch.nn.functional as F
 import torchvision.models as models
+import torchvision
 import functools
 
 
@@ -299,68 +300,7 @@ class HorizonNet(nn.Module):
         return bon, cor
 
 
-class RoomLayoutNet(nn.Module):
-
-    def __init__(self, backbone):
-        super(RoomLayoutNet, self).__init__()
-        self.backbone = backbone
-
-        # Encoder
-        if backbone.startswith('res'):
-            self.feature_extractor = Resnet(backbone, pretrained=True)
-        elif backbone.startswith('dense'):
-            self.feature_extractor = Densenet(backbone, pretrained=True)
-        else:
-            raise NotImplementedError()
-
-        # Inference channels number from each block of the encoder
-        with torch.no_grad():
-            dummy = torch.zeros(1, 3, 512, 1024)
-            c1, c2, c3, c4 = [b.shape[1] for b in self.feature_extractor(dummy)]
-            c_last = (c1*8 + c2*4 + c3*2 + c4*1) // self.out_scale
-
-        # Convert features from 4 blocks of the encoder into B x C x 1 x W'
-        self.reduce_height_module = GlobalHeightStage(c1, c2, c3, c4, self.out_scale)
-
-        
-        self.linear = nn.Sequential(
-            nn.Linear(c_last, self.rnn_hidden_size),
-            nn.ReLU(inplace=True),
-            nn.Dropout(0.5),
-            nn.Linear(self.rnn_hidden_size, 3 * self.step_cols),
-        )
-        self.linear[-1].bias.data[0*self.step_cols:1*self.step_cols].fill_(-1)
-        self.linear[-1].bias.data[1*self.step_cols:2*self.step_cols].fill_(-0.478)
-        self.linear[-1].bias.data[2*self.step_cols:3*self.step_cols].fill_(0.425)
-        
-
-    def forward(self, x, return_single=True):
-        if x.shape[2] != 512 or x.shape[3] != 1024:
-            raise NotImplementedError()
-        
-        conv_list = self.feature_extractor(x)
-        feature = self.reduce_height_module(conv_list, x.shape[3]//self.step_cols)
-
-        feature = feature.permute(0, 2, 1)  # [b, w, c*h]
-        output = self.linear(feature)  # [b, w, 3 * step_cols]
-        output = output.view(output.shape[0], output.shape[1], 3, self.step_cols)  # [b, w, 3, step_cols]
-        output = output.permute(0, 2, 1, 3)  # [b, 3, w, step_cols]
-        output = output.contiguous().view(output.shape[0], 3, -1)  # [b, 3, w*step_cols]
-
-        if return_single:
-            return output
-        else:
-            # output.shape => B x 3 x W
-            cor = output[:, :1]  # B x 1 x W
-            bon = output[:, 1:]  # B x 2 x W
-
-            return bon, cor
-
 
 if __name__ == '__main__':
-    net = HorizonNet('resnet50', True, 1).cuda()
-    img = torch.rand((1,3,512, 1024)).cuda()
-    mask = torch.rand((1,1,512, 1024)).cuda()
-    a,b = net(img, mask)
-    print(a.shape)
+    pass
     

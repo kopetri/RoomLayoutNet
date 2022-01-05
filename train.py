@@ -3,11 +3,10 @@ import torch
 import sys
 import random
 from argparse import ArgumentParser
-from module import LayoutEstimationImprover
-from model import ENCODER_DENSENET, ENCODER_RESNET
+from module import LayoutSegmentation
 import pytorch_lightning as pl
 from torch.utils.data import DataLoader
-from dataset import PanoCorBonDataset
+from dataset import CornerDataset
 import numpy as np
 
 if __name__ == '__main__':
@@ -23,41 +22,13 @@ if __name__ == '__main__':
     parser.add_argument('--find_learning_rate', action='store_true', help="Finding learning rate.")
     parser.add_argument('--detect_anomaly', action='store_true', help='Enables pytorch anomaly detection')
 
-    parser.add_argument('--input_nc', type=int, default=3, help='input image channels')
-    parser.add_argument('--output_nc', type=int, default=1, help='output image channels')
-    parser.add_argument('--ngf', type=int, default=64, help='generator filters in first conv layer')
-    parser.add_argument('--ndf', type=int, default=64, help='discriminator filters in first conv layer')
-    parser.add_argument('--niter', type=int, default=100, help='# of iter at starting learning rate')
-    parser.add_argument('--niter_decay', type=int, default=100, help='# of iter to linearly decay learning rate to zero')
-    parser.add_argument('--lr', type=float, default=0.0002, help='initial learning rate for adam')
-    parser.add_argument('--lr_policy', type=str, default='lambda', help='learning rate policy: lambda|step|plateau|cosine')
-    parser.add_argument('--lr_decay_iters', type=int, default=50, help='multiply by a gamma every lr_decay_iters iterations')
-    parser.add_argument('--beta1', type=float, default=0.5, help='beta1 for adam. default=0.5')
-    parser.add_argument('--lamb', type=int, default=10, help='weight on L1 term in objective')
-    parser.add_argument('--bce_loss', action='store_true', help='enable BCE GANLoss (default mse)')
-    parser.add_argument('--netD', default='basic', help='Discriminator model.')
-    parser.add_argument('--name', default='layoutnet', type=str, help="Name of output directory.")
-    # Model related
-    parser.add_argument('--backbone', default='resnet50', choices=ENCODER_RESNET + ENCODER_DENSENET, help='backbone of the network')
-    parser.add_argument('--no_rnn', action='store_true', help='whether to remove rnn or not')
-    # Dataset related arguments
-    parser.add_argument('--train_root_dir', default='data/layoutnet_dataset/train', help='root directory to training dataset. should contains img, label_cor subdirectories')
-    parser.add_argument('--valid_root_dir', default='data/layoutnet_dataset/valid', help='root directory to validation dataset. should contains img, label_cor subdirectories')
-    parser.add_argument('--no_flip', action='store_true', help='disable left-right flip augmentation')
-    parser.add_argument('--no_rotate', action='store_true', help='disable horizontal rotate augmentation')
-    parser.add_argument('--no_gamma', action='store_true', help='disable gamma augmentation')
-    parser.add_argument('--no_pano_stretch', action='store_true', help='disable pano stretch')
-    # optimization related arguments
-    parser.add_argument('--batch_size', default=4, type=int, help='training mini-batch size')
-    parser.add_argument('--use_ring_conv', action='store_true', help='Enable ring convolution.')
-
+    parser.add_argument('--dataset_path', required=True, type=str, help="Path to datasets.")
+    parser.add_argument('--batch_size', default=16, type=int, help="Batch size.")
+    parser.add_argument('--lr', default=1e-4, type=float, help="learning rate.")
+    parser.add_argument('--learning_rate_decay', default=0.9999, type=float)
+    parser.add_argument('--early_stop_patience', default=0, type=int, help='Stop training after n epochs with ne val_loss improvement.')
 
     args = parser.parse_args()
-
-    if args.bce_loss:
-        print("Using BCELoss")
-    else:
-        print("Using MSELoss")
 
     if args.detect_anomaly:
         print("Enabling anomaly detection")
@@ -72,16 +43,27 @@ if __name__ == '__main__':
         args.seed = random.randrange(4294967295) # Make sure it's logged
     pl.seed_everything(args.seed)
 
-    checkpoint_callback = pl.callbacks.ModelCheckpoint(
+    callbacks = []
+
+    if args.learning_rate_decay:
+        callbacks += [pl.callbacks.lr_monitor.LearningRateMonitor()]
+
+    callbacks += [pl.callbacks.ModelCheckpoint(
         verbose=True,
         save_top_k=1,
-        filename='{epoch}-{valid_3DIoU}',
-        monitor='valid_3DIoU',
-        mode='max'
-    )
+        filename='{epoch}-{valid_loss}',
+        monitor='valid_loss',
+        mode='min'
+    )]
 
-    callbacks = [pl.callbacks.lr_monitor.LearningRateMonitor()]
-    callbacks.append(checkpoint_callback)
+    if args.early_stop_patience > 0:
+        callbacks += [pl.callbacks.EarlyStopping(
+            monitor='valid_loss',
+            min_delta=0.00,
+            patience=args.early_stop_patience,
+            verbose=True,
+            mode='min'
+        )]
 
     use_gpu = not args.gpus == 0
 
@@ -96,7 +78,7 @@ if __name__ == '__main__':
         amp_level='O2' if use_gpu else None,
         min_epochs=args.min_epochs,
         max_epochs=args.max_epochs,
-        logger=pl.loggers.TensorBoardLogger("result", name=args.name),
+        logger=pl.loggers.WandbLogger(project="Layoutestimation", name="segmentation"),
         callbacks=callbacks
         )
 
@@ -107,11 +89,11 @@ if __name__ == '__main__':
             'gpu_capability': torch.cuda.get_device_capability(0) if use_gpu else None
             })
 
-    model = LayoutEstimationImprover(args)
-    train_dataset = PanoCorBonDataset(root_dir=args.train_root_dir, flip=not args.no_flip, rotate=not args.no_rotate, gamma=not args.no_gamma, stretch=not args.no_pano_stretch, return_mask=True)
-    val_dataset   = PanoCorBonDataset(root_dir=args.valid_root_dir, return_cor=True, flip=False, rotate=False, gamma=False, stretch=False)
+    model = LayoutSegmentation(args)
+    train_dataset = CornerDataset(path=args.dataset_path, split="train", scale=0.5)
+    val_dataset   = CornerDataset(path=args.dataset_path, split="valid", scale=0.5)
     train_loader = DataLoader(train_dataset, args.batch_size,
-                              shuffle=True, drop_last=True,
+                              shuffle=True,
                               num_workers=args.worker,
                               pin_memory=True,
                               worker_init_fn=lambda x: np.random.seed())
@@ -122,12 +104,5 @@ if __name__ == '__main__':
         shuffle=False,
         num_workers=args.worker
     )
-    if args.find_learning_rate:
-        # Run learning rate finder
-        lr_finder = trainer.tuner.lr_find(model=model, train_dataloader=train_loader, val_dataloaders=val_loader)
-        suggested_lr = lr_finder.suggestion()
-        print("Old learning rate: ", args.learning_rate)
-        args.learning_rate = suggested_lr
-        print("Suggested learning rate: ", args.learning_rate)
-    else:
-        trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
+
+    trainer.fit(model=model, train_dataloaders=train_loader, val_dataloaders=val_loader)
