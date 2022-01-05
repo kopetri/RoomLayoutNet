@@ -37,8 +37,11 @@ class CornerDataset(data.Dataset):
         super().__init__()
         self.split = split
         self.scale = scale
-        self.images = [i for i in Path(path).glob("**/*") if i.parents[0].name == "img" and i.parents[1].name == split]
-        print("Found {} images for split {}.".format(self.__len__(), split))
+        self.images    = [i for i in Path(path).glob("**/*") if i.parents[0].name == "img"       and i.parents[1].name == split]
+        self.label_cor = [i for i in Path(path).glob("**/*") if i.parents[0].name == "label_cor" and i.parents[1].name == split]
+        assert len(self.images) == len(self.label_cor)
+        print("Found {} images for split {}.".format(len(self.images), split))
+        print("Found {} labels for split {}.".format(len(self.label_cor), split))
 
     def __len__(self) -> int:
         return len(self.images)
@@ -51,7 +54,7 @@ class CornerDataset(data.Dataset):
         return np.asarray(img, dtype=np.float32)
 
     def load_corners(self, idx):
-        path = self.images[idx].as_posix().replace("img", "label_cor").replace(".png", ".txt").replace(".jpg", ".txt")
+        path = self.label_cor[idx].as_posix()
         cor = np.loadtxt(path)
         cor = (cor * self.scale).astype(int)
         return cor
