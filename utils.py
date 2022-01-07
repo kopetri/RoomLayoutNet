@@ -44,6 +44,6 @@ def extranct_coors(pred, gt):
     src_edges = np.array(src_corner)
 
     for c in corners:
-        cv2.circle(src_corner, c, 5, (0,255,0), -1)
+        cv2.circle(src_corner, tuple([x for x in c]), 5, (0,255,0), -1)
     
     return pred, gt, src_corner, src_edges
