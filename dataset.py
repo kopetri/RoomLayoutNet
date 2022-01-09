@@ -37,11 +37,13 @@ class CornerDataset(data.Dataset):
         super().__init__()
         self.split = split
         self.scale = scale
-        self.images    = [i for i in Path(path).glob("**/*") if i.parents[0].name == "img"       and i.parents[1].name == split]
-        self.label_cor = [i for i in Path(path).glob("**/*") if i.parents[0].name == "label_cor" and i.parents[1].name == split]
+        self.images        = [i for i in Path(path).glob("**/*") if i.parents[0].name == "img"       and i.parents[1].name == split]
+        self.segmentations = [i for i in Path(path).glob("**/*") if i.parents[0].name == "seg"       and i.parents[1].name == split]
+        self.label_cor     = [i for i in Path(path).glob("**/*") if i.parents[0].name == "label_cor" and i.parents[1].name == split]
         assert len(self.images) == len(self.label_cor)
         print("Found {} images for split {}.".format(len(self.images), split))
         print("Found {} labels for split {}.".format(len(self.label_cor), split))
+        print("Found {} segmentations for split {}.".format(len(self.segmentations), split))
 
     def __len__(self) -> int:
         return len(self.images)
@@ -49,6 +51,13 @@ class CornerDataset(data.Dataset):
     def load_image(self, idx):
         img = self.images[idx]
         img = Image.open(img).convert('RGB')
+        resize = (np.array(img.size) * self.scale).astype(int)
+        img = img.resize(resize)
+        return np.asarray(img, dtype=np.float32)
+
+    def load_segmentation(self, idx):
+        img = self.segmentations[idx]
+        img = Image.open(img)
         resize = (np.array(img.size) * self.scale).astype(int)
         img = img.resize(resize)
         return np.asarray(img, dtype=np.float32)
@@ -62,6 +71,7 @@ class CornerDataset(data.Dataset):
     def __getitem__(self, index: int):
         img = self.load_image(index)
         cor = self.load_corners(index)
+        seg = self.load_segmentation(index)
         
         mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.float32)
 
@@ -72,11 +82,13 @@ class CornerDataset(data.Dataset):
             dx = np.random.randint(img.shape[1])
             img  = np.roll(img, dx, axis=1)
             mask = np.roll(mask, dx, axis=1)
+            seg = np.roll(seg, dx, axis=1)
 
         img  = torch.from_numpy(img) / 255
+        seg  = torch.from_numpy(seg) / 255
         mask = torch.from_numpy(mask)
 
-        return img.permute(2,0,1), mask.unsqueeze(0)
+        return img.permute(2,0,1), seg.unsqueeze(0)
 
 
 class MyAugmentationDataset(data.Dataset):
