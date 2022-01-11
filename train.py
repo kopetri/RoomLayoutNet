@@ -27,8 +27,15 @@ if __name__ == '__main__':
     parser.add_argument('--lr', default=1e-4, type=float, help="learning rate.")
     parser.add_argument('--learning_rate_decay', default=0.9999, type=float)
     parser.add_argument('--early_stop_patience', default=0, type=int, help='Stop training after n epochs with ne val_loss improvement.')
+    parser.add_argument('--name', required=True, type=str, help="Name of the training run.")
+
+    # bts
+    parser.add_argument('--encoder', type=str, help='type of encoder, desenet121_bts, densenet161_bts, resnet101_bts, resnet50_bts, resnext50_bts or resnext101_bts', default='densenet161_bts')
+    parser.add_argument('--bts_size', type=int,   help='initial num_filters in bts', default=512) 
+    parser.add_argument('--max_depth', type=float, help='maximum depth in estimation', default=1)                                                           
 
     args = parser.parse_args()
+    args.dataset = Path(args.dataset_path).stem
 
     if args.detect_anomaly:
         print("Enabling anomaly detection")
@@ -78,7 +85,7 @@ if __name__ == '__main__':
         amp_level='O2' if use_gpu else None,
         min_epochs=args.min_epochs,
         max_epochs=args.max_epochs,
-        logger=pl.loggers.WandbLogger(project="Layoutestimation", name="segmentation"),
+        logger=pl.loggers.WandbLogger(project="Layoutestimation", name=args.name),
         callbacks=callbacks
         )
 

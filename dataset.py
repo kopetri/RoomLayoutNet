@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 from shapely.geometry import LineString
 from scipy.spatial.distance import cdist
+from utils import generate_distance_map
 
 import torch
 import torch.utils.data as data
@@ -33,10 +34,11 @@ def draw_circle(img_, pt, r=5):
     return img_[r:-r, r:-r]
 
 class CornerDataset(data.Dataset):
-    def __init__(self, path, split, scale=1.0) -> None:
+    def __init__(self, path, split, scale=1.0, labels=['cor', 'seg', 'dist', 'mask']) -> None:
         super().__init__()
         self.split = split
         self.scale = scale
+        self.labels = labels
         self.images        = [i for i in Path(path).glob("**/*") if i.parents[0].name == "img"       and i.parents[1].name == split]
         self.segmentations = [i for i in Path(path).glob("**/*") if i.parents[0].name == "seg"       and i.parents[1].name == split]
         self.label_cor     = [i for i in Path(path).glob("**/*") if i.parents[0].name == "label_cor" and i.parents[1].name == split]
@@ -70,10 +72,15 @@ class CornerDataset(data.Dataset):
 
     def __getitem__(self, index: int):
         img = self.load_image(index)
-        cor = self.load_corners(index)
-        seg = self.load_segmentation(index)
         
+        cor = self.load_corners(index)
+        if 'seg' in self.labels: 
+            seg = self.load_segmentation(index)
+        else:
+            seg = np.zeros_like(img)
+        dist = generate_distance_map(cor)
         mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.float32)
+
 
         for pt in cor:
             mask = draw_circle(mask, pt)
@@ -83,12 +90,22 @@ class CornerDataset(data.Dataset):
             img  = np.roll(img, dx, axis=1)
             mask = np.roll(mask, dx, axis=1)
             seg = np.roll(seg, dx, axis=1)
-
+            dist = np.roll(dist, dx, axis=1)
+        
         img  = torch.from_numpy(img) / 255
         seg  = torch.from_numpy(seg) / 255
         mask = torch.from_numpy(mask)
+        dist = torch.from_numpy(dist)
 
-        return img.permute(2,0,1), seg.unsqueeze(0)
+        data_point = {
+            'img': img.permute(2,0,1),
+        }
+
+        if 'seg' in self.labels:  data_point['seg']  = seg.unsqueeze(0)
+        if 'mask' in self.labels: data_point['mask'] = mask.unsqueeze(0).unsqueeze(0)
+        if 'dist' in self.labels: data_point['dist'] = dist.unsqueeze(0)
+
+        return data_point
 
 
 class MyAugmentationDataset(data.Dataset):

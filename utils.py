@@ -1,6 +1,27 @@
 import cv2 
 import numpy as np
 
+def generate_distance_map(corners, w=1024, h=512):
+    N = corners.shape[0]
+    mapping = np.zeros((N, 512, 1024), np.float32)
+    for i, (x,y) in enumerate(corners):
+        diagonal = np.linalg.norm(np.array([h, w]))
+        cor = np.array([y,x])
+
+        cor = np.tile(cor, (h, w)).reshape((h,w,2)) #512x1024x2
+        
+        indices = np.indices((h,w)) # 512x1024x2
+        indices = np.transpose(indices, (1,2,0))
+        diff = cor - indices
+
+        distance = np.linalg.norm(diff, axis=-1)
+        distance /= diagonal
+        mapping[i] = distance
+
+    mapping = np.min(mapping, axis=0)
+    
+    return 1.0 - mapping
+
 def edges(gray, threshold=0):
     src_gray = cv2.blur(gray, (3,3))    
     # Detect edges using Canny
@@ -47,3 +68,13 @@ def extranct_coors(pred, gt):
         cv2.circle(src_corner, tuple([x for x in c]), 5, (0,255,0), -1)
     
     return pred, gt, src_corner, src_edges
+
+if __name__ == '__main__':
+    path = "G:/projects/HorizonNet/data/layoutnet_dataset/test/label_cor/camera_0000896878bd47b2a624ad180aac062e_conferenceRoom_3_frame_equirectangular_domain_.txt"
+    corners = np.loadtxt(path).astype(np.int32)
+    mapping = generate_distance_map(path)
+    mapping = cv2.applyColorMap((mapping * 255).astype(np.uint8), cv2.COLORMAP_INFERNO)
+    for corner in corners:
+        cv2.circle(mapping, corner, 5, (0,0,0), -1)
+    cv2.imshow("distances", mapping)
+    cv2.waitKey(0)
