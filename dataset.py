@@ -78,7 +78,8 @@ class CornerDataset(data.Dataset):
             seg = self.load_segmentation(index)
         else:
             seg = np.zeros_like(img)
-        dist = generate_distance_map(cor)
+        [w, h] = np.array([1024.0, 512.0]) * self.scale
+        dist = generate_distance_map(cor, w=int(w), h=int(h))
         mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.float32)
 
 
