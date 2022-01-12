@@ -1,6 +1,10 @@
 import cv2 
 import numpy as np
 
+def restore_corners(cor_map):
+    print(np.max(cor_map))
+
+
 def generate_distance_map(corners, w=1024, h=512):
     N = corners.shape[0]
     mapping = np.zeros((N, h, w), np.float32)
@@ -72,9 +76,39 @@ def extranct_coors(pred, gt):
 if __name__ == '__main__':
     path = "G:/projects/HorizonNet/data/layoutnet_dataset/test/label_cor/camera_0000896878bd47b2a624ad180aac062e_conferenceRoom_3_frame_equirectangular_domain_.txt"
     corners = np.loadtxt(path).astype(np.int32)
-    mapping = generate_distance_map(path)
+    mapping = generate_distance_map(corners)
+
+    
+    tmp = cv2.resize(mapping, (512, 256))
+
+    alpha = 0.9
+
+    mask = tmp>alpha
+    tmp[mask] = 1.0
+    tmp[~mask] = 0.0
+    cv2.imshow("gt", tmp)
+
     mapping = cv2.applyColorMap((mapping * 255).astype(np.uint8), cv2.COLORMAP_INFERNO)
     for corner in corners:
         cv2.circle(mapping, corner, 5, (0,0,0), -1)
-    cv2.imshow("distances", mapping)
+
+    pred = cv2.imread("G:/Downloads/media_images_validation_batch_0_21196_0.png", cv2.IMREAD_ANYDEPTH)
+    pred = pred.astype(np.float32) / 255.0
+    #pred = np.ones((256, 512)) *0.5
+    
+    mask = pred>alpha
+    pred[mask] = 1.0
+    pred[~mask] = 0.0
+
+    intersection = pred * tmp
+    union = np.clip((pred + tmp), 0,1)
+    iou = np.sum(intersection) / np.sum(union)
+
+    print(iou)
+
+    cv2.imshow("pred", pred)
+    cv2.imshow("intersection", intersection)
+    cv2.imshow("union", union)
+    
+    #cv2.imshow("distances", mapping)
     cv2.waitKey(0)

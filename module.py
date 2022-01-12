@@ -6,7 +6,15 @@ from nested_unet import NestedUNet as Unet
 from utils import extranct_coors
 import wandb
 from bts import BtsModel
-from metrics import Delta, Delta1
+from metrics import Delta, IoU
+
+def loss_function(loss):
+    if loss == 'mse':
+        return nn.MSELoss()
+    elif loss == 'mae':
+        return nn.L1Loss()
+    else:
+        raise NotImplementedError("unknown loss: ", loss)
 
 class LayoutSegmentation(pl.LightningModule):
     def __init__(self, opt):
@@ -15,7 +23,10 @@ class LayoutSegmentation(pl.LightningModule):
         self.opt = opt
         #self.model = Unet(1, input_channels=3)
         self.model = BtsModel(opt)
-        self.criterion = nn.MSELoss()
+        self.criterion = loss_function(opt.loss)
+        self.iou3 = IoU(0.9)
+        self.iou2 = IoU(0.99)
+        self.iou1 = IoU(0.999)
 
     def forward(self, X):
         _, _, _, _, Y_hat = self.model(X)
@@ -25,23 +36,23 @@ class LayoutSegmentation(pl.LightningModule):
         X,Y = batch['img'], batch['dist']
         Y_hat = self(X)
         loss = self.criterion(Y_hat, Y)
-        d0 = Delta(Y_hat, Y, 1/2)
-        d1 = Delta(Y_hat, Y, 1/1)
-        d3 = Delta(Y_hat, Y, 1/3)
-        self.log("train_loss", loss)
-        self.log("train_delta0", d0, prog_bar=True)
-        self.log("train_delta1", d1, prog_bar=True)
-        self.log("train_d3", d3, prog_bar=True)
+        iou1 = self.iou1(Y_hat, Y)
+        iou2 = self.iou2(Y_hat, Y)
+        iou3 = self.iou3(Y_hat, Y)
+        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_iou1", iou1, prog_bar=True)
+        self.log("train_iou2", iou2, prog_bar=True)
+        self.log("train_iou3", iou3, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         X,Y = batch['img'], batch['dist']
         Y_hat = self(X)
         loss = self.criterion(Y_hat, Y)
-    
-        d0 = Delta(Y_hat, Y, 1/2)
-        d1 = Delta(Y_hat, Y, 1/1)
-        d3 = Delta(Y_hat, Y, 1/3)
+        iou1 = self.iou1(Y_hat, Y)
+        iou2 = self.iou2(Y_hat, Y)
+        iou3 = self.iou3(Y_hat, Y)
+        
         if batch_idx in np.arange(0,5,1):
             #pred, gt, edges, corn = extranct_coors(Y_hat, Y)
             self.logger.experiment.log({"validation_batch_{}".format(batch_idx):[
@@ -51,9 +62,11 @@ class LayoutSegmentation(pl.LightningModule):
                 ]})
         
         self.log("valid_loss", loss, prog_bar=True)
-        self.log("valid_delta0", d0, prog_bar=True)
-        self.log("valid_delta1", d1, prog_bar=True)
-        self.log("valid_d3", d3, prog_bar=True)
+        
+        self.log("train_loss", loss, prog_bar=True)
+        self.log("train_iou1", iou1, prog_bar=True)
+        self.log("train_iou2", iou2, prog_bar=True)
+        self.log("train_iou3", iou3, prog_bar=True)
         return {'valid_loss': loss}
 
     def test_step(self, batch, batch_idx):

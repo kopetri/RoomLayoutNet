@@ -1,4 +1,5 @@
 from pathlib import Path
+from numpy.core.fromnumeric import take
 import torch
 import sys
 import random
@@ -28,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('--learning_rate_decay', default=0.9999, type=float)
     parser.add_argument('--early_stop_patience', default=0, type=int, help='Stop training after n epochs with ne val_loss improvement.')
     parser.add_argument('--name', required=True, type=str, help="Name of the training run.")
+    parser.add_argument('--loss', default='mse', type=str, help="Base loss function")
 
     # bts
     parser.add_argument('--encoder', type=str, help='type of encoder, desenet121_bts, densenet161_bts, resnet101_bts, resnet50_bts, resnext50_bts or resnext101_bts', default='densenet161_bts')
