@@ -190,7 +190,7 @@ class bts(nn.Module):
                                               nn.ELU())
         self.get_depth  = torch.nn.Sequential(nn.Conv2d(num_features // 16, 1, 3, 1, 1, bias=False),
                                               nn.Sigmoid())
-        self.final_upsample = nn.Upsample(scale_factor=2, mode='nearest')                                              
+        #self.final_upsample = nn.Upsample(scale_factor=2, mode='nearest')                                              
 
     def forward(self, features):
         skip0, skip1, skip2, skip3 = features[0], features[1], features[2], features[3]
@@ -262,7 +262,7 @@ class bts(nn.Module):
         if self.params.dataset == 'kitti':
             final_depth = final_depth * focal.view(-1, 1, 1, 1).float() / 715.0873
         
-        final_depth = self.final_upsample(final_depth)
+        #final_depth = self.final_upsample(final_depth)
         return depth_8x8_scaled, depth_4x4_scaled, depth_2x2_scaled, reduc1x1, final_depth
 
 class encoder(nn.Module):
