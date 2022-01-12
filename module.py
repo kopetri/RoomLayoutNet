@@ -6,7 +6,7 @@ from nested_unet import NestedUNet as Unet
 from utils import extranct_coors
 import wandb
 from bts import BtsModel
-from metrics import Delta1
+from metrics import Delta, Delta1
 
 class LayoutSegmentation(pl.LightningModule):
     def __init__(self, opt):
@@ -25,16 +25,23 @@ class LayoutSegmentation(pl.LightningModule):
         X,Y = batch['img'], batch['dist']
         Y_hat = self(X)
         loss = self.criterion(Y_hat, Y)
-        acc = Delta1(Y_hat, Y)
+        d0 = Delta(Y_hat, Y, 1/2)
+        d1 = Delta(Y_hat, Y, 1/1)
+        d3 = Delta(Y_hat, Y, 1/3)
         self.log("train_loss", loss)
-        self.log("train_delta1", acc, prog_bar=True)
+        self.log("train_delta0", d0, prog_bar=True)
+        self.log("train_delta1", d1, prog_bar=True)
+        self.log("train_d3", d3, prog_bar=True)
         return loss
 
     def validation_step(self, batch, batch_idx):
         X,Y = batch['img'], batch['dist']
         Y_hat = self(X)
         loss = self.criterion(Y_hat, Y)
-        acc = Delta1(Y_hat, Y)
+    
+        d0 = Delta(Y_hat, Y, 1/2)
+        d1 = Delta(Y_hat, Y, 1/1)
+        d3 = Delta(Y_hat, Y, 1/3)
         if batch_idx in np.arange(0,5,1):
             #pred, gt, edges, corn = extranct_coors(Y_hat, Y)
             self.logger.experiment.log({"validation_batch_{}".format(batch_idx):[
@@ -44,7 +51,9 @@ class LayoutSegmentation(pl.LightningModule):
                 ]})
         
         self.log("valid_loss", loss, prog_bar=True)
-        self.log("valid_delta1", acc, prog_bar=True)
+        self.log("valid_delta0", d0, prog_bar=True)
+        self.log("valid_delta1", d1, prog_bar=True)
+        self.log("valid_d3", d3, prog_bar=True)
         return {'valid_loss': loss}
 
     def test_step(self, batch, batch_idx):
