@@ -63,10 +63,10 @@ class LayoutSegmentation(pl.LightningModule):
         
         self.log("valid_loss", loss, prog_bar=True)
         
-        self.log("train_loss", loss, prog_bar=True)
-        self.log("train_iou1", iou1, prog_bar=True)
-        self.log("train_iou2", iou2, prog_bar=True)
-        self.log("train_iou3", iou3, prog_bar=True)
+        self.log("valid_loss", loss, prog_bar=True)
+        self.log("valid_iou1", iou1, prog_bar=True)
+        self.log("valid_iou2", iou2, prog_bar=True)
+        self.log("valid_iou3", iou3, prog_bar=True)
         return {'valid_loss': loss}
 
     def test_step(self, batch, batch_idx):
