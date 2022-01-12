@@ -3,7 +3,7 @@ import numpy as np
 
 def generate_distance_map(corners, w=1024, h=512):
     N = corners.shape[0]
-    mapping = np.zeros((N, 512, 1024), np.float32)
+    mapping = np.zeros((N, h, w), np.float32)
     for i, (x,y) in enumerate(corners):
         diagonal = np.linalg.norm(np.array([h, w]))
         cor = np.array([y,x])
