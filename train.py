@@ -59,19 +59,19 @@ if __name__ == '__main__':
 
     callbacks += [pl.callbacks.ModelCheckpoint(
         verbose=True,
-        save_top_k=1,
-        filename='{epoch}-{valid_loss}',
-        monitor='valid_loss',
-        mode='min'
+        save_top_k=5,
+        filename='{epoch}-{valid_loss}-{valid_iou1}-{valid_iou2}-{valid_iou3}',
+        monitor='valid_iou2',
+        mode='max'
     )]
 
     if args.early_stop_patience > 0:
         callbacks += [pl.callbacks.EarlyStopping(
-            monitor='valid_loss',
+            monitor='valid_iou2',
             min_delta=0.00,
             patience=args.early_stop_patience,
             verbose=True,
-            mode='min'
+            mode='max'
         )]
 
     use_gpu = not args.gpus == 0

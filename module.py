@@ -67,7 +67,7 @@ class LayoutSegmentation(pl.LightningModule):
         self.log("valid_iou1", iou1, prog_bar=True)
         self.log("valid_iou2", iou2, prog_bar=True)
         self.log("valid_iou3", iou3, prog_bar=True)
-        return {'valid_loss': loss}
+        return {'valid_loss': loss, 'valid_iou1': iou1, 'valid_iou2': iou2, 'valid_iou3': iou3}
 
     def test_step(self, batch, batch_idx):
         X,Y = batch['img'], batch['dist']
