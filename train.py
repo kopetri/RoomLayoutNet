@@ -60,14 +60,14 @@ if __name__ == '__main__':
     callbacks += [pl.callbacks.ModelCheckpoint(
         verbose=True,
         save_top_k=5,
-        filename='{epoch}-{valid_loss}-{valid_iou1}-{valid_iou2}-{valid_iou3}',
-        monitor='valid_iou2',
+        filename='{epoch}-{valid_3DIoU}',
+        monitor='valid_3DIoU',
         mode='max'
     )]
 
     if args.early_stop_patience > 0:
         callbacks += [pl.callbacks.EarlyStopping(
-            monitor='valid_iou2',
+            monitor='valid_3DIoU',
             min_delta=0.00,
             patience=args.early_stop_patience,
             verbose=True,
@@ -99,8 +99,8 @@ if __name__ == '__main__':
             })
 
     model = LayoutSegmentation(args)
-    train_dataset = CornerDataset(path=args.dataset_path, split="train", scale=0.5)
-    val_dataset   = CornerDataset(path=args.dataset_path, split="valid", scale=0.5)
+    train_dataset = CornerDataset(path=args.dataset_path, split="train", scale=1.0)
+    val_dataset   = CornerDataset(path=args.dataset_path, split="valid", scale=1.0)
     train_loader = DataLoader(train_dataset, args.batch_size,
                               shuffle=True,
                               num_workers=args.worker,

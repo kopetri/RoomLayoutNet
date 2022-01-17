@@ -6,7 +6,12 @@ from nested_unet import NestedUNet as Unet
 from utils import extranct_coors
 import wandb
 from bts import BtsModel
-from metrics import Delta, IoU
+from metrics import Delta, IoU, extract_corners, corner_error
+from torchvision.utils import save_image
+from pathlib import Path
+from inference import inference
+from eval_general import test_general
+from eval_cuboid import test
 
 def loss_function(loss):
     if loss == 'mse':
@@ -46,13 +51,9 @@ class LayoutSegmentation(pl.LightningModule):
         return loss
 
     def validation_step(self, batch, batch_idx):
-        X,Y = batch['img'], batch['dist']
+        X,Y, gt_cor_id = batch['img'], batch['dist'], batch['cor'][0]
         Y_hat = self(X)
-        loss = self.criterion(Y_hat, Y)
-        iou1 = self.iou1(Y_hat, Y)
-        iou2 = self.iou2(Y_hat, Y)
-        iou3 = self.iou3(Y_hat, Y)
-        
+                
         if batch_idx in np.arange(0,5,1):
             #pred, gt, edges, corn = extranct_coors(Y_hat, Y)
             self.logger.experiment.log({"validation_batch_{}".format(batch_idx):[
@@ -60,21 +61,53 @@ class LayoutSegmentation(pl.LightningModule):
                 wandb.Image(Y, caption="valid_ground_truth"),
                 wandb.Image(X, caption="valid_img")
                 ]})
-        
-        self.log("valid_loss", loss, prog_bar=True)
-        
-        self.log("valid_loss", loss, prog_bar=True)
-        self.log("valid_iou1", iou1, prog_bar=True)
-        self.log("valid_iou2", iou2, prog_bar=True)
-        self.log("valid_iou3", iou3, prog_bar=True)
-        return {'valid_loss': loss, 'valid_iou1': iou1, 'valid_iou2': iou2, 'valid_iou3': iou3}
+        true_eval = dict([
+            (n_corner, {'2DIoU': [], '3DIoU': [], 'rmse': [], 'delta_1': []})
+            for n_corner in ['4', '6', '8', '10+', 'odd', 'overall']
+        ])
+        losses = {}
+        try:
+            N = len(gt_cor_id)
+            dt_cor_id = extract_corners(Y_hat, N=N)
+            dt_cor_id[:, 0] *= 1024
+            dt_cor_id[:, 1] *= 512
+        except Exception as e:
+            dt_cor_id = np.array([
+                [k//2 * 1024, 256 - ((k%2)*2 - 1) * 120]
+                for k in range(8)
+            ])
+        test_general(dt_cor_id, gt_cor_id, 1024, 512, true_eval)
+        losses['2DIoU'] = torch.FloatTensor([true_eval['overall']['2DIoU']])
+        losses['3DIoU'] = torch.FloatTensor([true_eval['overall']['3DIoU']])
+        losses['rmse'] = torch.FloatTensor([true_eval['overall']['rmse']])
+        losses['delta_1'] = torch.FloatTensor([true_eval['overall']['delta_1']])
+
+        self.log("valid_2DIoU",   losses['2DIoU'], prog_bar=True)
+        self.log("valid_3DIoU",   losses['3DIoU'], prog_bar=True)
+        self.log("valid_rmse",    losses['rmse'], prog_bar=True)
+        self.log("valid_delta_1", losses['delta_1'], prog_bar=True)
+
+        return {'valid_2DIoU': losses['2DIoU'], 'valid_3DIoU': losses['3DIoU'], 'valid_rmse': losses['rmse'], 'valid_delta_1': losses['delta_1']}
 
     def test_step(self, batch, batch_idx):
         X,Y = batch['img'], batch['dist']
         Y_hat = self(X)
         loss = self.criterion(Y_hat, Y)
-        self.log("test_loss", loss, prog_bar=True)
-        return {'test_loss': loss}
+        iou1 = self.iou1(Y_hat, Y)
+        iou2 = self.iou2(Y_hat, Y)
+        iou3 = self.iou3(Y_hat, Y)
+        
+        corners_gt = extract_corners(Y, N=8)
+        corners_id = extract_corners(Y_hat, N=8)
+        ce = corner_error(corners_gt, corners_id, 512, 256)
+        
+        
+        self.log("loss", loss, prog_bar=True)
+        self.log("ce", ce, prog_bar=True)
+        self.log("iou1", iou1, prog_bar=True)
+        self.log("iou2", iou2, prog_bar=True)
+        self.log("iou3", iou3, prog_bar=True)
+        return {'loss': loss, 'iou1': iou1, 'iou2':iou2, 'iou3':iou3, 'ce': ce}
             
 
     def configure_optimizers(self):

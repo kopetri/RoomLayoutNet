@@ -97,9 +97,11 @@ class CornerDataset(data.Dataset):
         seg  = torch.from_numpy(seg) / 255
         mask = torch.from_numpy(mask)
         dist = torch.from_numpy(dist)
+        cor = torch.from_numpy(cor)
 
         data_point = {
             'img': img.permute(2,0,1),
+            'cor': cor
         }
 
         if 'seg' in self.labels:  data_point['seg']  = seg.unsqueeze(0)
