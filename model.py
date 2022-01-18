@@ -69,7 +69,7 @@ class Resnet(nn.Module):
         x = self.encoder.layer2(x);  features.append(x)  # 1/8
         x = self.encoder.layer3(x);  features.append(x)  # 1/16
         x = self.encoder.layer4(x);  features.append(x)  # 1/32
-        return features
+        return features[-1]
 
     def list_blocks(self):
         lst = [m for m in self.encoder.children()]
@@ -95,7 +95,7 @@ class Densenet(nn.Module):
             x = m(x)
             lst.append(x)
         features = [lst[4], lst[6], lst[8], self.final_relu(lst[11])]
-        return features
+        return features[-1]
 
     def list_blocks(self):
         lst = [m for m in self.encoder.features.children()]

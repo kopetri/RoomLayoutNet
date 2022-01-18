@@ -29,6 +29,7 @@ if __name__ == '__main__':
     parser.add_argument('--early_stop_patience', default=0, type=int, help='Stop training after n epochs with ne val_loss improvement.')
     parser.add_argument('--name', required=True, type=str, help="Name of the training run.")
     parser.add_argument('--activation', default='sigmoid', type=str, help="Activation function for corner prediction")
+    parser.add_argument('--encoder', default='simple', type=str)
                                                  
 
     args = parser.parse_args()
@@ -98,6 +99,7 @@ if __name__ == '__main__':
     val_dataset   = CornerDataset(path=args.dataset_path, split="valid", scale=1.0)
     train_loader = DataLoader(train_dataset, args.batch_size,
                               shuffle=True,
+                              drop_last=True,
                               num_workers=args.worker,
                               pin_memory=True,
                               worker_init_fn=lambda x: np.random.seed())

@@ -126,7 +126,7 @@ class EightCornerModule(pl.LightningModule):
         super().__init__()
         self.save_hyperparameters()
         self.opt = opt
-        self.model = PixelCornerNetwork(activation=self.opt.activation, img_size=[1024, 512])
+        self.model = PixelCornerNetwork(activation=self.opt.activation, img_size=[1024, 512], encoder=self.opt.encoder)
         self.criterion = ChamferDistanceLoss()
 
     def forward(self, X):
@@ -168,10 +168,10 @@ class EightCornerModule(pl.LightningModule):
         img = np.zeros((512, 1024, 3), dtype=np.uint8)
 
         for gt in gt_corners:
-            cv2.circle(img, gt, 7, (0,255,0), -1)
+            cv2.circle(img, tuple(gt), 7, (0,255,0), -1)
 
         for corner in corners:
-            cv2.circle(img, corner, 7, (255,0,0), -1)
+            cv2.circle(img, tuple(corner), 7, (255,0,0), -1)
 
         return img
             
