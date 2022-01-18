@@ -2,6 +2,7 @@ import torch
 import numpy as np
 import cv2
 
+
 def Delta(pred, target, exp=1.0):
     maxRatio = torch.max(pred / target, target / pred)
     return (maxRatio < 1.25 ** exp).float().mean()
@@ -72,4 +73,25 @@ class IoU(torch.nn.Module):
         union = torch.clip(mask_pred + mask_gt, 0, 1)
         return torch.sum(intersection) / torch.sum(union)
         
-        
+
+def chamfer_distance(S1, S2):
+    def __cdist(S1, S2):
+        N = S1.shape[1]
+        M = S2.shape[1]
+        C = S1.shape[-1]
+        X = torch.repeat_interleave(S1, M, dim=1)
+        Y = S2.repeat(1, N, 1)
+
+        diff = (X-Y).reshape(-1, N, M, C)
+        dist = torch.norm(diff, dim=-1)
+        minimum, _ = torch.min(dist, dim=-1)
+        return torch.sum(minimum, dim=-1)
+
+    return torch.sum(__cdist(S1, S2) + __cdist(S2, S1))
+
+class ChamferDistanceLoss(torch.nn.Module):
+    def __init__(self) -> None:
+        super().__init__()
+
+    def forward(self, pred, gt):
+        return chamfer_distance(pred, gt)

@@ -299,8 +299,109 @@ class HorizonNet(nn.Module):
 
         return bon, cor
 
+def bn_act_drop(num_channels, dropout):
+    if dropout > 0:
+        return nn.Sequential(nn.BatchNorm1d(num_channels), nn.ReLU(), nn.Dropout(dropout))
+    else:
+        return nn.Sequential(nn.BatchNorm1d(num_channels), nn.ReLU())
+
+class MLP(nn.Module):
+    def __init__(self, dropout, in_features, out_features):
+        super().__init__()
+        self.mlp = nn.Linear(in_features, out_features)
+        self.norm = bn_act_drop(out_features, dropout)
+
+    def forward(self, x):
+        x = self.mlp(x)
+        x = self.norm(x)
+        return x
+
+class Conv2dAuto(nn.Conv2d):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self.padding =  (self.kernel_size[0] // 2, self.kernel_size[1] // 2) # dynamic add padding based on the kernel_size
+
+conv3x3 = functools.partial(Conv2dAuto, kernel_size=3, bias=False)  
+
+def conv_bn(in_channels, out_channels, *args, **kwargs):
+    return nn.Sequential(conv3x3(in_channels, out_channels, *args, **kwargs), nn.BatchNorm2d(out_channels))
+
+def conv_bn_relu(in_channels, out_channels, downsampling, *args, **kwargs):
+    return nn.Sequential(conv3x3(in_channels, out_channels, stride=downsampling, *args, **kwargs), nn.BatchNorm2d(out_channels), nn.ReLU())
+
+class EncoderSimple(nn.Module):
+    def __init__(self, latent_size=128):
+        super().__init__()
+        self.block1 = conv_bn_relu(3,                 latent_size // 8,   downsampling=2)
+        self.block2 = conv_bn_relu(latent_size // 8,  latent_size // 4,   downsampling=2)
+        self.block3 = conv_bn_relu(latent_size // 4,  latent_size // 2,   downsampling=2)
+        self.block4 = conv_bn_relu(latent_size // 2,  latent_size,        downsampling=2)
+
+    def forward(self, x):
+        x = self.block1(x)
+        x = self.block2(x)
+        x = self.block3(x)
+        x = self.block4(x)
+        return x
+
+class Reshape(nn.Module):
+    def __init__(self, shape):
+        super().__init__()
+        self._shape = shape
+
+    def forward(self, x):
+        return x.reshape(self._shape)
+
+class PixelCornerNetwork(nn.Module):
+    def __init__(self, img_size, encoder="simple", latent_size=128, dropout=0.5, n_features=[128, 32], activation=None):
+        super().__init__()
+        if activation == 'tanh':
+            last_layer = torch.nn.Tanh()
+        elif activation == 'relu':
+            last_layer = torch.nn.ReLU()
+        elif activation == 'sigmoid':
+            last_layer = torch.nn.Sigmoid()
+        else:
+            last_layer = torch.nn.Identity()
+
+        if encoder == 'simple':
+            self.encoder = EncoderSimple(latent_size=latent_size)
+        elif encoder in ENCODER_RESNET:
+            self.encoder = Resnet(backbone=encoder)
+        elif encoder in ENCODER_DENSENET:
+            self.encoder = Densenet(backbone=encoder)
+        else:
+            raise NotImplementedError()
+        
+        _, latent_size_half, dim0, dim1 = self.encoder(torch.rand((1,3,img_size[1], img_size[0]))).shape
+
+        latent_size = 2 * latent_size_half
+
+        print(latent_size, dim0, dim1)
+
+        self.decoder = nn.Sequential(
+            torch.nn.AvgPool2d(dim0),
+            Reshape((-1, latent_size)),
+            bn_act_drop(latent_size, dropout),
+            MLP(dropout=dropout, in_features=latent_size, out_features=n_features[0]),
+            MLP(dropout=0.0, in_features=n_features[0],   out_features=n_features[1]),
+            nn.Linear(n_features[1], 8 * 2),
+            Reshape((-1, 8, 2)),
+            last_layer
+        )
+
+    def forward(self, x):
+        x = self.encoder(x)
+        x = self.decoder(x)
+        return x
 
 
 if __name__ == '__main__':
-    pass
+    network = PixelCornerNetwork(img_size=(512, 1024), activation='sigmoid').cuda().eval()
+
+    img = torch.rand((1, 3, 512, 1024)).cuda()
+
+    pred = network(img)
+
+    print(pred)
     

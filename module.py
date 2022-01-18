@@ -6,12 +6,13 @@ from nested_unet import NestedUNet as Unet
 from utils import extranct_coors
 import wandb
 from bts import BtsModel
-from metrics import Delta, IoU, extract_corners, corner_error
+from metrics import Delta, IoU, extract_corners, corner_error, ChamferDistanceLoss
 from torchvision.utils import save_image
 from pathlib import Path
 from inference import inference
 from eval_general import test_general
-from eval_cuboid import test
+from model import PixelCornerNetwork
+import cv2 
 
 def loss_function(loss):
     if loss == 'mse':
@@ -108,6 +109,71 @@ class LayoutSegmentation(pl.LightningModule):
         self.log("iou2", iou2, prog_bar=True)
         self.log("iou3", iou3, prog_bar=True)
         return {'loss': loss, 'iou1': iou1, 'iou2':iou2, 'iou3':iou3, 'ce': ce}
+            
+
+    def configure_optimizers(self):
+        optimizer = torch.optim.Adam(self.model.parameters(), lr=self.opt.lr)
+        scheduler = {
+                'scheduler': torch.optim.lr_scheduler.LambdaLR(optimizer, lr_lambda=lambda _: np.power(self.opt.learning_rate_decay, self.global_step)),
+                'interval': 'step',
+                'frequency': 1,
+                'strict': True,
+            }
+        return [optimizer], [scheduler]
+
+class EightCornerModule(pl.LightningModule):
+    def __init__(self, opt):
+        super().__init__()
+        self.save_hyperparameters()
+        self.opt = opt
+        self.model = PixelCornerNetwork(activation=self.opt.activation, img_size=[1024, 512])
+        self.criterion = ChamferDistanceLoss()
+
+    def forward(self, X):
+        Y_hat = self.model(X)
+        return Y_hat
+
+    def training_step(self, batch, batch_idx):
+        X,Y = batch['img'], batch['cor']
+        Y_hat = self(X)
+        loss = self.criterion(Y_hat, Y)
+        self.log("train_chamfer_distance", loss, prog_bar=True)
+        return loss
+
+    def validation_step(self, batch, batch_idx):
+        X,Y = batch['img'], batch['cor']
+        Y_hat = self(X)
+        
+        loss = self.criterion(Y_hat, Y)
+
+        if batch_idx in np.arange(0,5,1):
+            self.logger.experiment.log({"validation_batch_{}".format(batch_idx):[
+                wandb.Image(X, caption="valid_img"),
+                wandb.Image(self.draw_corners(Y_hat, Y), caption="valid_pred")
+                ]})
+        
+        self.log("valid_chamfer_distance", loss, prog_bar=True)
+        return {'valid_chamfer_distance': loss}
+
+    def draw_corners(self, corners, gt_corners):
+        corners = corners.detach().cpu().squeeze(0).numpy()
+        gt_corners = gt_corners.detach().cpu().squeeze(0).numpy()
+
+        corners = corners * np.array([1024, 512])
+        corners = corners.astype(np.int)
+
+        gt_corners = gt_corners * np.array([1024, 512])
+        gt_corners = gt_corners.astype(np.int)
+
+        img = np.zeros((512, 1024, 3), dtype=np.uint8)
+
+        for gt in gt_corners:
+            cv2.circle(img, gt, 7, (0,255,0), -1)
+
+        for corner in corners:
+            cv2.circle(img, corner, 7, (255,0,0), -1)
+
+        return img
             
 
     def configure_optimizers(self):

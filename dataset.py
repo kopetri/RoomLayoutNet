@@ -4,6 +4,7 @@ import numpy as np
 from PIL import Image
 from shapely.geometry import LineString
 from scipy.spatial.distance import cdist
+from torch._C import dtype
 from utils import generate_distance_map
 
 import torch
@@ -55,14 +56,14 @@ class CornerDataset(data.Dataset):
         img = Image.open(img).convert('RGB')
         resize = (np.array(img.size) * self.scale).astype(int)
         img = img.resize(resize)
-        return np.asarray(img, dtype=np.float32)
+        return np.asarray(img, dtype=np.float32) / 255
 
     def load_segmentation(self, idx):
         img = self.segmentations[idx]
         img = Image.open(img)
         resize = (np.array(img.size) * self.scale).astype(int)
         img = img.resize(resize)
-        return np.asarray(img, dtype=np.float32)
+        return np.asarray(img, dtype=np.float32) / 255
 
     def load_corners(self, idx):
         path = self.label_cor[idx].as_posix()
@@ -78,8 +79,8 @@ class CornerDataset(data.Dataset):
             seg = self.load_segmentation(index)
         else:
             seg = np.zeros_like(img)
-        [w, h] = np.array([1024.0, 512.0]) * self.scale
-        dist = generate_distance_map(cor, w=int(w), h=int(h))
+        img_size = np.array([1024.0, 512.0], dtype=np.float32) * self.scale
+        dist = generate_distance_map(cor, w=int(img_size[0]), h=int(img_size[1]))
         mask = np.zeros((img.shape[0], img.shape[1]), dtype=np.float32)
 
 
@@ -92,9 +93,12 @@ class CornerDataset(data.Dataset):
             mask = np.roll(mask, dx, axis=1)
             seg = np.roll(seg, dx, axis=1)
             dist = np.roll(dist, dx, axis=1)
+            cor[:, 0] = (cor[:, 0] + dx) % img.shape[1]
+
         
-        img  = torch.from_numpy(img) / 255
-        seg  = torch.from_numpy(seg) / 255
+        cor = cor.astype(np.float32) / img_size
+        img  = torch.from_numpy(img) 
+        seg  = torch.from_numpy(seg) 
         mask = torch.from_numpy(mask)
         dist = torch.from_numpy(dist)
         cor = torch.from_numpy(cor)
